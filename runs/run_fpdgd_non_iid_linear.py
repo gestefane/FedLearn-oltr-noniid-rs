@@ -28,7 +28,8 @@ def do_task(task):
     params = common_params.copy()
     linear_ranker = PDGDLinearRanker(n_features, Learning_rate)
     if enable_noise:
-        linear_ranker.enable_noise_and_set_sensitivity(enable_noise, sensitivity)
+        linear_ranker.enable_noise_and_set_sensitivity(
+            enable_noise, sensitivity)
     params.update(
         dict(click_model=click_model,
              sensitivity=sensitivity,
@@ -48,9 +49,9 @@ def do_task(task):
         trainset = []
         for label in range(10):
             train = LetorDataset("{}/LDS2_V1/Fold{}/label_{}/train.txt".format(params['dataset_path'], fold_id + 1, label),
-                                    params['n_features'], query_level_norm=data_norm,
-                                    cache_root="../datasets/cache",
-                                    abs_path=False)
+                                 params['n_features'], query_level_norm=data_norm,
+                                 cache_root="../datasets/cache",
+                                 abs_path=False)
             trainset.append(train)
         testset = LetorDataset("{}/Fold{}/test.txt".format(params['dataset_path'], fold_id + 1),
                                params['n_features'], query_level_norm=data_norm,
@@ -66,10 +67,12 @@ def do_task(task):
 
     task_info = f"click_model:iid {click_model.name} folder:{fold_id+1}" if is_iid else f"click_model:non-iid {click_model.name} folder:{fold_id+1}"
     click_type = click_model.name
-    save_path = output_path + "fold_{}/{}/sensitivity_{}/epsilon_{}/result.npy".format(fold_id, click_type, sensitivity, epsilon)
+    save_path = output_path + "fold_{}/{}/sensitivity_{}/epsilon_{}/result.npy".format(
+        fold_id, click_type, sensitivity, epsilon)
     if not os.path.exists(os.path.dirname(save_path)):
         os.makedirs(os.path.dirname(save_path))
-    train_result = train_uniform(params=params, traindata=trainset, testdata=testset, message=task_info, num_update=num_update, is_iid=is_iid, non_iid_type=non_iid_type, save_path=save_path)
+    train_result = train_uniform(params=params, traindata=trainset, testdata=testset, message=task_info,
+                                 num_update=num_update, is_iid=is_iid, non_iid_type=non_iid_type, save_path=save_path)
     return train_result
 
 
@@ -77,38 +80,86 @@ def run(path, tasks):
     tasks = list(tasks)
     print("num tasks:", len(tasks))
     # multi-processing
-    n_cpu = min(3, len(tasks))
+    # n_cpu = min(3, len(tasks))
+    n_cpu = min(1, len(tasks))
     print("num cpus:", n_cpu)
+
+    # original code
     with Pool(n_cpu) as p:
         results = p.map(do_task, tasks)
 
+    # replaced with
+    # results = []
+
+    for task in tasks:
+        res = do_task(task)
+        results.append(res)
+
+    c = 0
     for task, result in tqdm(zip(tasks, results)):
+        c = c+1
+        print("task:", c, " of ", len(tasks))
         fold_id, click_model, e_s, ranker_id = task
         epsilon = e_s[0]
         sensitivity = e_s[1]
         click_type = click_model.name
-        save_path = path + "fold_{}/{}/sensitivity_{}/epsilon_{}/result.npy".format(fold_id, click_type, sensitivity, epsilon)
+        save_path = path + "fold_{}/{}/sensitivity_{}/epsilon_{}/result.npy".format(
+            fold_id, click_type, sensitivity, epsilon)
+        if not os.path.exists(os.path.dirname(save_path)):
+            os.makedirs(os.path.dirname(save_path))
+        np.save(save_path, result)
+
+
+# parallel execution
+
+
+def runParallel(path, tasks):
+
+    tasks = list(tasks)
+    print("num tasks:", len(tasks))
+
+    # Decide on the number of processes
+    # n_cpu = min(3, len(tasks))
+    # n_cpu = min(3, len(tasks))
+    n_cpu = min(5, len(tasks))
+    print("num cpus:", n_cpu)
+
+    # Use the Pool to execute tasks in parallel
+    with Pool(n_cpu) as p:
+        results = list(tqdm(p.imap(do_task, tasks), total=len(tasks)))
+
+    # Process the results
+    for task, result in zip(tasks, results):
+        fold_id, click_model, e_s, ranker_id = task
+        epsilon = e_s[0]
+        sensitivity = e_s[1]
+        click_type = click_model.name
+        save_path = path + "fold_{}/{}/sensitivity_{}/epsilon_{}/result.npy".format(
+            fold_id, click_type, sensitivity, epsilon)
         if not os.path.exists(os.path.dirname(save_path)):
             os.makedirs(os.path.dirname(save_path))
         np.save(save_path, result)
 
 
 if __name__ == "__main__":
-    # not recommend to change here
-    update = True # client_multi_update
+    start_time = time.time()
 
-    ## non-iid experiment
-    is_iid = False # set True if you want run iid baseline, set False to run non-iid baseline
-    non_iid_type = "label_dist_skew" # ["intent_change", "label_dist_skew", "click_pref_skew", "data_quan_skew"]
-    is_mixed = False # set True if you want to pair this non-iid type with "data_quan_skew"
+    # not recommend to change here
+    update = True  # client_multi_update
+
+    # non-iid experiment
+    is_iid = False  # set True if you want run iid baseline, set False to run non-iid baseline
+    # ["intent_change", "label_dist_skew", "click_pref_skew", "data_quan_skew"]
+    non_iid_type = "label_dist_skew"
+    is_mixed = False  # set True if you want to pair this non-iid type with "data_quan_skew"
     # solutions
-    is_personal_layer = False # True for personalization layer: FedPer
-    fed_alg = "fedavg" # ["fedavg", "fedprox"]
+    is_personal_layer = False  # True for personalization layer: FedPer
+    fed_alg = "fedavg"  # ["fedavg", "fedprox"]
     # mu = 0.001 # [0 (equal to fedavg), 0.001, 0.01, 0.1, 1]
     # mu_list = [0, 0.00001, 0.0001, 0.001, 0.01, 0.1, 1]
     mu_list = [0]
 
-    ## iid experiment
+    # iid experiment
     # is_iid = True # set 'True' if you want run iid baseline, set 'False' to run non-iid baseline
     # non_iid_type = "label_dist_skew" # ["intent_change", None, "label_dist_skew", "click_pref_skew"]
     # is_personal_layer = False # True for personalization layer: FedPer
@@ -118,27 +169,30 @@ if __name__ == "__main__":
     # mu_list = [0, 0.00001, 0.0001, 0.001, 0.01, 0.1, 1]
     # mu_list = [0]
 
-    ## without dp noise
+    # without dp noise
     enable_noise = False  # set True if you want to add DP noise, otherwise set False
     e_s_list = [(0, 0)]
 
     # experiment parameters
-    datasets = ["Yahoo"]  # ["MQ2007", "MSLR10K", "Yahoo", "Istella-s", "intent-change"]
+    # ["MQ2007", "MSLR10K", "Yahoo", "Istella-s", "intent-change"]
+    datasets = ["MSLR10K"]
     experiment = "FPDGD-non iid"
     n_clients = 10
     batch_size = 5
-    num_update = 10000
+    # num_update = 10000
+    num_update = 10
     # interactions_budget = n_clients * batch_size * num_update
     interactions_budget = num_update
     Learning_rate = 0.1
-    click_model_type = "CCM"# "CCM" "PBM"
+    click_model_type = "CCM"  # "CCM" "PBM"
 
     # dataset and result path
     dataset_root_dir = "../datasets"
     output_root_dir = "../results"
     intent_path = "../datasets/intent-change/intents"
 
-    for seed in tqdm(range(1, 6)):  # range(1,21)
+    # for seed in tqdm(range(1, 6)):  # range(1,21)
+    for seed in tqdm(range(1, 3)):  # range(1,21)
         for mu in mu_list:
             for dataset in datasets:
                 if dataset == "MQ2007":
@@ -152,6 +206,7 @@ if __name__ == "__main__":
                     data_norm = False
 
                 elif dataset == "MSLR10K":
+                    # n_folds = 5
                     n_folds = 5
                     n_features = 136
                     data_norm = True
@@ -191,45 +246,55 @@ if __name__ == "__main__":
                 # click models
                 if dataset == "MQ2007" or dataset == "MQ2008":
                     PERFECT_MODEL = CcmClickModel(click_relevance={0: 0.0, 1: 0.5, 2: 1.0},
-                                                  stop_relevance={0: 0.0, 1: 0.0, 2: 0.0},
+                                                  stop_relevance={
+                                                      0: 0.0, 1: 0.0, 2: 0.0},
                                                   name="Perfect", depth=10)
                     NAVIGATIONAL_MODEL = CcmClickModel(click_relevance={0: 0.05, 1: 0.5, 2: 0.95},
-                                                       stop_relevance={0: 0.2, 1: 0.5, 2: 0.9},
+                                                       stop_relevance={
+                                                           0: 0.2, 1: 0.5, 2: 0.9},
                                                        name="Navigational", depth=10)
                     INFORMATIONAL_MODEL = CcmClickModel(click_relevance={0: 0.4, 1: 0.7, 2: 0.9},
-                                                        stop_relevance={0: 0.1, 1: 0.3, 2: 0.5},
+                                                        stop_relevance={
+                                                            0: 0.1, 1: 0.3, 2: 0.5},
                                                         name="Informational", depth=10)
                     # click_models = [PERFECT_MODEL, NAVIGATIONAL_MODEL, INFORMATIONAL_MODEL]
 
                 elif dataset == "intent-change":
                     PERFECT_MODEL = CcmClickModel(click_relevance={0: 0.0, 1: 1.0},
-                                                  stop_relevance={0: 0.0, 1: 0.0},
+                                                  stop_relevance={
+                                                      0: 0.0, 1: 0.0},
                                                   name="Perfect", depth=10)
                     NAVIGATIONAL_MODEL = CcmClickModel(click_relevance={0: 0.05, 1: 0.95},
-                                                       stop_relevance={0: 0.2, 1: 0.9},
+                                                       stop_relevance={
+                                                           0: 0.2, 1: 0.9},
                                                        name="Navigational", depth=10)
                     INFORMATIONAL_MODEL = CcmClickModel(click_relevance={0: 0.3, 1: 0.7},
-                                                        stop_relevance={0: 0.1, 1: 0.5},
+                                                        stop_relevance={
+                                                            0: 0.1, 1: 0.5},
                                                         name="Informational", depth=10)
 
                 elif dataset == "MSLR10K" or dataset == "Yahoo" or dataset == "Istella-s":
-                    ## CCM
+                    # CCM
                     PERFECT_MODEL = CcmClickModel(click_relevance={0: 0.0, 1: 0.2, 2: 0.4, 3: 0.8, 4: 1.0},
-                                                  stop_relevance={0: 0.0, 1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0},
+                                                  stop_relevance={
+                                                      0: 0.0, 1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0},
                                                   name="Perfect",
                                                   depth=10)
                     NAVIGATIONAL_MODEL = CcmClickModel(click_relevance={0: 0.05, 1: 0.3, 2: 0.5, 3: 0.7, 4: 0.95},
-                                                       stop_relevance={0: 0.2, 1: 0.3, 2: 0.5, 3: 0.7, 4: 0.9},
+                                                       stop_relevance={
+                                                           0: 0.2, 1: 0.3, 2: 0.5, 3: 0.7, 4: 0.9},
                                                        name="Navigational",
                                                        depth=10)
                     INFORMATIONAL_MODEL = CcmClickModel(click_relevance={0: 0.4, 1: 0.6, 2: 0.7, 3: 0.8, 4: 0.9},
-                                                        stop_relevance={0: 0.1, 1: 0.2, 2: 0.3, 3: 0.4, 4: 0.5},
+                                                        stop_relevance={
+                                                            0: 0.1, 1: 0.2, 2: 0.3, 3: 0.4, 4: 0.5},
                                                         name="Informational",
                                                         depth=10)
 
-                    click_models = [PERFECT_MODEL, NAVIGATIONAL_MODEL, INFORMATIONAL_MODEL]
+                    click_models = [PERFECT_MODEL,
+                                    NAVIGATIONAL_MODEL, INFORMATIONAL_MODEL]
 
-                    ## PBM
+                    # PBM
                     # click_models = []
                     # eta_list = [0, 0.5, 1, 1.5, 2]
                     # for eta in eta_list:
@@ -249,8 +314,8 @@ if __name__ == "__main__":
                     intent_path=intent_path,
                     is_personal_layer=is_personal_layer,
                     is_mixed=is_mixed,
-                    fed_alg = fed_alg,
-                    mu = mu
+                    fed_alg=fed_alg,
+                    mu=mu
                 )
 
                 if non_iid_type == "click_pref_skew":
@@ -267,4 +332,10 @@ if __name__ == "__main__":
                                               e_s_list,
                                               range(1))
 
-                run(output_path, tasks)
+                # run(output_path, tasks)
+                runParallel(output_path, tasks)
+
+    end_time = time.time()
+
+    total_time = end_time - start_time
+    print(f"Tempo total de execução: {total_time:.2f} segundos")

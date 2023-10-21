@@ -144,8 +144,10 @@ def train_uniform(params: Dict[str, Any], traindata: LetorDataset, testdata: Let
                 client.update_model(ranker)
 
         if i % 499 == 0 and i > 0:
+            print("Saving np.save: {}".format(i))
             tmp_result = TrainResult(ranker=ranker, ndcg_server=ndcg_server, mrr_server=mrr_server, ndcg_client=ndcg_clients,
                         mrr_client=mrr_clients)
+            print("tmp_result.ndcg_server.shape: {}".format(np.array(tmp_result.ndcg_server).shape))
             np.save(save_path, tmp_result)
 
     return TrainResult(ranker=ranker, ndcg_server = ndcg_server, mrr_server=mrr_server, ndcg_client=ndcg_clients, mrr_client=mrr_clients)

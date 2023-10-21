@@ -220,7 +220,7 @@ def data_sharing_with_label_distribution_skew_for_R1(dataset, n_folds, n_feature
 
 if __name__ == "__main__":
     # configuration
-    dataset = "Istella-s" # "MQ2007" "MSLR10K" "Yahoo" "Istella-s"
+    dataset = "MSLR10K" # "MQ2007" "MSLR10K" "Yahoo" "Istella-s"
 
     if dataset == "MQ2007":
         n_folds = 5
@@ -249,24 +249,24 @@ if __name__ == "__main__":
         n_labels = 5
 
     # # implementation - choose the function that you want to implement
-    # generate_label_distribution_skew_for_R1(dataset, n_folds, n_labels)
-    # generate_label_distribution_skew_for_R2_V1(dataset, n_folds)
-    # generate_label_distribution_skew_for_R2_V2(dataset, n_folds, n_features, data_norm)
-    # data_sharing_with_label_distribution_skew_for_R1(dataset, n_folds, n_features, data_norm, n_labels)
+    generate_label_distribution_skew_for_R1(dataset, n_folds, n_labels)
+    generate_label_distribution_skew_for_R2_V1(dataset, n_folds)
+    generate_label_distribution_skew_for_R2_V2(dataset, n_folds, n_features, data_norm)
+    data_sharing_with_label_distribution_skew_for_R1(dataset, n_folds, n_features, data_norm, n_labels)
 
-    # # testing - check the length of query_set after partition
-    # for fold in range(n_folds):
-    #     fold_id = fold + 1
-    #     for label in range(n_labels):
-    #         train_0 = LetorDataset(f"../datasets/{dataset}/LDS/Fold{fold_id}/label_{label}/train.txt",
-    #                                 n_features, query_level_norm=data_norm,
-    #                                 cache_root="../datasets/cache",
-    #                                 abs_path=False)
-    #         query_set = train_0.get_all_querys()
-    #         print("folder:", fold_id, "label:", label, "length of query_set:", np.shape(query_set))
-    #
-    #         for rel in range(n_labels):
-    #             a = 0
-    #             for query in query_set:
-    #                 a += train_0.get_all_relevance_label_by_query(query).count(rel)
-    #             print("label:", rel, a)
+    # testing - check the length of query_set after partition
+    for fold in range(n_folds):
+        fold_id = fold + 1
+        for label in range(n_labels):
+            train_0 = LetorDataset(f"../datasets/{dataset}/LDS/Fold{fold_id}/label_{label}/train.txt",
+                                    n_features, query_level_norm=data_norm,
+                                    cache_root="../datasets/cache",
+                                    abs_path=False)
+            query_set = train_0.get_all_querys()
+            print("folder:", fold_id, "label:", label, "length of query_set:", np.shape(query_set))
+    
+            for rel in range(n_labels):
+                a = 0
+                for query in query_set:
+                    a += train_0.get_all_relevance_label_by_query(query).count(rel)
+                print("label:", rel, a)
