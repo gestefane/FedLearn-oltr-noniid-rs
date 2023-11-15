@@ -85,11 +85,11 @@ def run(path, tasks):
     print("num cpus:", n_cpu)
 
     # original code
-    with Pool(n_cpu) as p:
-        results = p.map(do_task, tasks)
+    # with Pool(n_cpu) as p:
+    #     results = p.map(do_task, tasks)
 
     # replaced with
-    # results = []
+    results = []
 
     for task in tasks:
         res = do_task(task)
@@ -121,7 +121,7 @@ def runParallel(path, tasks):
     # Decide on the number of processes
     # n_cpu = min(3, len(tasks))
     # n_cpu = min(3, len(tasks))
-    n_cpu = min(5, len(tasks))
+    n_cpu = min(4, len(tasks))
     print("num cpus:", n_cpu)
 
     # Use the Pool to execute tasks in parallel

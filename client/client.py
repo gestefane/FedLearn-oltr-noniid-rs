@@ -10,15 +10,19 @@ from ranker.PDGDNeuralRanker import PDGDNeuralRanker
 # The message that each client send to the server:
 # 1.updated parameters from client
 # 2.volume of data that client use for each update
-ClientMessage = NamedTuple("ClientMessage",[("gradient", np.ndarray), ("parameters", np.ndarray), ("n_interactions", int)])
+ClientMessage = NamedTuple("ClientMessage", [(
+    "gradient", np.ndarray), ("parameters", np.ndarray), ("n_interactions", int)])
 
 # Metric values (ndcg@k, mrr@k) of each client averaged on whole batch (computed by relevance label)
-ClientMetric = NamedTuple("ClientMetric", [("mean_ndcg", float), ("mean_mrr", float), ("ndcg_list", list), ("mrr_list", list)])
+ClientMetric = NamedTuple("ClientMetric", [(
+    "mean_ndcg", float), ("mean_mrr", float), ("ndcg_list", list), ("mrr_list", list)])
+
 
 class RankingClient_iid:
     """
     emulate clients
     """
+
     def __init__(self, dataset: LetorDataset, init_model, seed: int, click_model: CcmClickModel, sensitivity, epsilon, enable_noise, n_clients, client_id):
         """
         :param dateset: representing a (query -> {document relevances, document features}) mapping
@@ -67,13 +71,13 @@ class RankingClient_iid:
         self.model.biases = local_biases
 
     # evaluation metric: ndcg@k
-    def eval_ranking_ndcg(self, ranking: np.ndarray, k = 10) -> float:
+    def eval_ranking_ndcg(self, ranking: np.ndarray, k=10) -> float:
         dcg = 0.0
         idcg = 0.0
         rel_set = []
         rel_set = sorted(ranking.copy().tolist(), reverse=True)
         for i in range(0, min(k, ranking.shape[0])):
-            r = ranking[i] # document (true) relevance label
+            r = ranking[i]  # document (true) relevance label
             dcg += ((2 ** r - 1) / np.log2(i + 2))
             idcg += ((2 ** rel_set[i] - 1) / np.log2(i + 2))
         # deal with invalid value
@@ -85,17 +89,18 @@ class RankingClient_iid:
         return ndcg
 
     # evaluation metric: mrr@k
-    def eval_ranking_mrr(self, ranking: np.ndarray, k = 10) -> float:
+    def eval_ranking_mrr(self, ranking: np.ndarray, k=10) -> float:
         rr = 0.0
         got_rr = False
         for i in range(0, min(k, ranking.shape[0])):
-            r = ranking[i] # document (true) relevance label
-            if r > 0 and got_rr == False: # TODO: decide the threshold value for relevance label
+            r = ranking[i]  # document (true) relevance label
+            if r > 0 and got_rr == False:  # TODO: decide the threshold value for relevance label
                 rr = 1/(i+1)
                 got_rr = True
 
         return rr
 
+    # FIXME - parece ser aqui o treino do modelo LOCAL
     def client_ranker_update(self, n_interactions: int, multi_update=True, fed_alg="fedavg", mu=0):
         """
         Run submits queries to a ranking model and gets its performance (eval metrics) and updates gradient / models
@@ -105,12 +110,14 @@ class RankingClient_iid:
         """
         per_interaction_client_ndcg = []
         per_interaction_client_mrr = []
-        index = self.random_state.randint(self.query_set.shape[0], size=n_interactions+10) # randomly choose queries for simulation on each client (number of queries based o the set n_interactions)
-        gradients = np.zeros(self.dataset._feature_size) # initialize gradient
-        global_weights = self.model.get_current_weights() # used for fedprox
+        # randomly choose queries for simulation on each client (number of queries based o the set n_interactions)
+        index = self.random_state.randint(
+            self.query_set.shape[0], size=n_interactions+10)
+        gradients = np.zeros(self.dataset._feature_size)  # initialize gradient
+        global_weights = self.model.get_current_weights()  # used for fedprox
 
         n_success = 0
-        for i in range(n_interactions+10): # run in batches
+        for i in range(n_interactions+10):  # run in batches
 
             if n_success == n_interactions:
                 break
@@ -119,7 +126,8 @@ class RankingClient_iid:
             qid = self.query_set[id]
 
             try:
-                ranking_result, scores = self.model.get_query_result_list(self.dataset, qid)
+                ranking_result, scores = self.model.get_query_result_list(
+                    self.dataset, qid)
                 n_success += 1
             except Exception as e:
                 print("exception in get_quey_result_list", str(e))
@@ -129,25 +137,32 @@ class RankingClient_iid:
             ranking_relevance = np.zeros(ranking_result.shape[0])
             for i in range(0, ranking_result.shape[0]):
                 docid = ranking_result[i]
-                relevance = self.dataset.get_relevance_label_by_query_and_docid(qid, docid)
+                relevance = self.dataset.get_relevance_label_by_query_and_docid(
+                    qid, docid)
                 ranking_relevance[i] = relevance
             # # compute online performance
-            per_interaction_client_mrr.append(self.eval_ranking_mrr(ranking_relevance)) # using relevance label for evaluation
+            per_interaction_client_mrr.append(self.eval_ranking_mrr(
+                ranking_relevance))  # using relevance label for evaluation
             # per_interaction_client_ndcg.append(self.eval_ranking_ndcg(ranking_relevance))# using relevance label for evaluation
             # another way to compute online ndcg
-            online_ndcg = evl_tool.query_ndcg_at_k(self.dataset,ranking_result,qid,10)
+            online_ndcg = evl_tool.query_ndcg_at_k(
+                self.dataset, ranking_result, qid, 10)
             per_interaction_client_ndcg.append(online_ndcg)
 
-            click_label = self.click_model(ranking_relevance, self.random_state)
+            click_label = self.click_model(
+                ranking_relevance, self.random_state)
 
             # g = self.model.update_to_clicks(click_label, ranking_result, scores, return_gradients=True)
             # g = self.model.update_to_clicks(click_label, ranking_result, scores,
             #                                 self.dataset.get_all_features_by_query(qid), return_gradients=True)
 
+            # FIXME - descobrir aqui onde fica a funcao de perda bem como onde estao os resultados do treino local ou seja o y_pred e o y_true
+            # FIXME - parece ser aqui o treino do modelo LOCAL
             current_weights = self.model.get_current_weights()  # used for fedprox
-            if fed_alg == "fedprox": # update for fedprox
+            if fed_alg == "fedprox":  # update for fedprox
                 if isinstance(self.model, PDGDNeuralRanker):
-                    g = self.model.update_to_clicks(click_label, ranking_result, scores, return_gradients=True)
+                    g = self.model.update_to_clicks(
+                        click_label, ranking_result, scores, return_gradients=True)
                     # regularization = mu * (current_weights - global_weights)
                     # g -= regularization
 
@@ -155,29 +170,38 @@ class RankingClient_iid:
                     layer_num = len(g)
                     for idx in range(len(g)):
                         g_item_w = g[idx][0]
-                        regu_w_item = mu * (current_weights[0][layer_num-idx-1] - global_weights[0][layer_num-idx-1])
+                        regu_w_item = mu * \
+                            (current_weights[0][layer_num-idx-1] -
+                             global_weights[0][layer_num-idx-1])
                         g_item_w = g_item_w - regu_w_item
                         if idx != 0:
                             g_item_b = g[idx][1]
-                            regu_b_item = mu * ( current_weights[1][layer_num - idx - 1] - global_weights[1][layer_num - idx - 1])
+                            regu_b_item = mu * \
+                                (current_weights[1][layer_num - idx - 1] -
+                                 global_weights[1][layer_num - idx - 1])
                             g_item_b = g_item_b - regu_b_item
                         else:
                             g_item_b = None
                         new_g.append((g_item_w, g_item_b))
                     g = new_g
                 else:
-                    g = self.model.update_to_clicks(click_label, ranking_result, scores, self.dataset.get_all_features_by_query(qid), return_gradients=True)
+                    g = self.model.update_to_clicks(
+                        click_label, ranking_result, scores, self.dataset.get_all_features_by_query(qid), return_gradients=True)
                     regularization = mu * (current_weights - global_weights)
                     g -= regularization
             else:
                 if isinstance(self.model, PDGDNeuralRanker):
-                    g = self.model.update_to_clicks(click_label, ranking_result, scores, return_gradients=True)
+                    # FIXME - neural ranker
+                    g = self.model.update_to_clicks(
+                        click_label, ranking_result, scores, return_gradients=True)
                 else:
-                    g = self.model.update_to_clicks(click_label, ranking_result, scores, self.dataset.get_all_features_by_query(qid), return_gradients=True)
+                    # FIXME - linear ranker
+                    g = self.model.update_to_clicks(
+                        click_label, ranking_result, scores, self.dataset.get_all_features_by_query(qid), return_gradients=True)
 
             if multi_update:  # update in each interaction
                 self.model.update_to_gradients(g)
-            else: # accumulate gradients in batch (sum)
+            else:  # accumulate gradients in batch (sum)
                 gradients += g
 
         # testset_result = ranker.get_all_query_reuslt_list(test_set)
@@ -188,9 +212,10 @@ class RankingClient_iid:
 
         updated_weights = self.model.get_current_weights()
 
-        ## add noise
+        # add noise
         if self.model.enable_noise:
-            noise = gamma_noise(np.shape(updated_weights), self.sensitivity, self.epsilon, self.n_clients)
+            noise = gamma_noise(np.shape(updated_weights),
+                                self.sensitivity, self.epsilon, self.n_clients)
 
             updated_weights += noise
 
@@ -198,7 +223,6 @@ class RankingClient_iid:
         mean_client_mrr = np.mean(per_interaction_client_mrr)
 
         return ClientMessage(gradient=gradients, parameters=updated_weights, n_interactions=n_interactions), ClientMetric(mean_ndcg=mean_client_ndcg, mean_mrr=mean_client_mrr, ndcg_list=per_interaction_client_ndcg, mrr_list=per_interaction_client_mrr)
-
 
     def get_client_feedback(self, n_interactions: int) -> ClientMessage:
         """
@@ -210,11 +234,11 @@ class RankingClient_iid:
         pass
 
 
-
 class RankingClient_iid_LRS:
     """
     emulate 'label preference skew' iid clients using query_click pair
     """
+
     def __init__(self, dataset: LetorDataset, init_model, seed: int, query_iid_group: list, query_click_pair: dict, sensitivity, epsilon, enable_noise, n_clients):
         """
         :param dateset: representing a (query -> {document relevances, document features}) mapping
@@ -243,13 +267,13 @@ class RankingClient_iid_LRS:
         self.model = copy.deepcopy(model)
 
     # evaluation metric: ndcg@k
-    def eval_ranking_ndcg(self, ranking: np.ndarray, k = 10) -> float:
+    def eval_ranking_ndcg(self, ranking: np.ndarray, k=10) -> float:
         dcg = 0.0
         idcg = 0.0
         rel_set = []
         rel_set = sorted(ranking.copy().tolist(), reverse=True)
         for i in range(0, min(k, ranking.shape[0])):
-            r = ranking[i] # document (true) relevance label
+            r = ranking[i]  # document (true) relevance label
             dcg += ((2 ** r - 1) / np.log2(i + 2))
             idcg += ((2 ** rel_set[i] - 1) / np.log2(i + 2))
         # deal with invalid value
@@ -261,12 +285,12 @@ class RankingClient_iid_LRS:
         return ndcg
 
     # evaluation metric: mrr@k
-    def eval_ranking_mrr(self, ranking: np.ndarray, k = 10) -> float:
+    def eval_ranking_mrr(self, ranking: np.ndarray, k=10) -> float:
         rr = 0.0
         got_rr = False
         for i in range(0, min(k, ranking.shape[0])):
-            r = ranking[i] # document (true) relevance label
-            if r > 0 and got_rr == False: # TODO: decide the threshold value for relevance label
+            r = ranking[i]  # document (true) relevance label
+            if r > 0 and got_rr == False:  # TODO: decide the threshold value for relevance label
                 rr = 1/(i+1)
                 got_rr = True
 
@@ -281,11 +305,13 @@ class RankingClient_iid_LRS:
         """
         per_interaction_client_ndcg = []
         per_interaction_client_mrr = []
-        index = self.random_state.randint(len(self.query_set), size=n_interactions+10) # randomly choose queries for simulation on each client (number of queries based o the set n_interactions)
-        gradients = np.zeros(self.dataset._feature_size) # initialize gradient
+        # randomly choose queries for simulation on each client (number of queries based o the set n_interactions)
+        index = self.random_state.randint(
+            len(self.query_set), size=n_interactions+10)
+        gradients = np.zeros(self.dataset._feature_size)  # initialize gradient
 
         n_success = 0
-        for i in range(n_interactions+10): # run in batches
+        for i in range(n_interactions+10):  # run in batches
 
             if n_success == n_interactions:
                 break
@@ -294,7 +320,8 @@ class RankingClient_iid_LRS:
             qid = self.query_set[id]
 
             try:
-                ranking_result, scores = self.model.get_query_result_list(self.dataset, qid)
+                ranking_result, scores = self.model.get_query_result_list(
+                    self.dataset, qid)
                 n_success += 1
             except Exception as e:
                 print("exception in get_quey_result_list", str(e))
@@ -304,22 +331,26 @@ class RankingClient_iid_LRS:
             ranking_relevance = np.zeros(ranking_result.shape[0])
             for i in range(0, ranking_result.shape[0]):
                 docid = ranking_result[i]
-                relevance = self.dataset.get_relevance_label_by_query_and_docid(qid, docid)
+                relevance = self.dataset.get_relevance_label_by_query_and_docid(
+                    qid, docid)
                 ranking_relevance[i] = relevance
             # # compute online performance
-            per_interaction_client_mrr.append(self.eval_ranking_mrr(ranking_relevance)) # using relevance label for evaluation
+            per_interaction_client_mrr.append(self.eval_ranking_mrr(
+                ranking_relevance))  # using relevance label for evaluation
             # per_interaction_client_ndcg.append(self.eval_ranking_ndcg(ranking_relevance))# using relevance label for evaluation
             # another way to compute online ndcg
-            online_ndcg = evl_tool.query_ndcg_at_k(self.dataset,ranking_result,qid,10)
+            online_ndcg = evl_tool.query_ndcg_at_k(
+                self.dataset, ranking_result, qid, 10)
             per_interaction_client_ndcg.append(online_ndcg)
 
             click_model = self.query_click_pair[qid]
             click_label = click_model(ranking_relevance, self.random_state)
 
-            g = self.model.update_to_clicks(click_label, ranking_result, scores, self.dataset.get_all_features_by_query(qid), return_gradients=True)
+            g = self.model.update_to_clicks(
+                click_label, ranking_result, scores, self.dataset.get_all_features_by_query(qid), return_gradients=True)
             if multi_update:  # update in each interaction
                 self.model.update_to_gradients(g)
-            else: # accumulate gradients in batch (sum)
+            else:  # accumulate gradients in batch (sum)
                 gradients += g
 
         # testset_result = ranker.get_all_query_reuslt_list(test_set)
@@ -330,9 +361,10 @@ class RankingClient_iid_LRS:
 
         updated_weights = self.model.get_current_weights()
 
-        ## add noise
+        # add noise
         if self.model.enable_noise:
-            noise = gamma_noise(np.shape(updated_weights), self.sensitivity, self.epsilon, self.n_clients)
+            noise = gamma_noise(np.shape(updated_weights),
+                                self.sensitivity, self.epsilon, self.n_clients)
 
             updated_weights += noise
 
@@ -340,7 +372,6 @@ class RankingClient_iid_LRS:
         mean_client_mrr = np.mean(per_interaction_client_mrr)
 
         return ClientMessage(gradient=gradients, parameters=updated_weights, n_interactions=n_interactions), ClientMetric(mean_ndcg=mean_client_ndcg, mean_mrr=mean_client_mrr, ndcg_list=per_interaction_client_ndcg, mrr_list=per_interaction_client_mrr)
-
 
     def get_client_feedback(self, n_interactions: int) -> ClientMessage:
         """
@@ -352,11 +383,11 @@ class RankingClient_iid_LRS:
         pass
 
 
-
 class RankingClient_iid_LRS_V2:
     """
     emulate 'label preference skew' iid clients using query_click pair
     """
+
     def __init__(self, dataset: LetorDataset, init_model, seed: int, click_model: list, sensitivity, epsilon, enable_noise, n_clients):
         """
         :param dateset: representing a (query -> {document relevances, document features}) mapping
@@ -385,13 +416,13 @@ class RankingClient_iid_LRS_V2:
         self.model = copy.deepcopy(model)
 
     # evaluation metric: ndcg@k
-    def eval_ranking_ndcg(self, ranking: np.ndarray, k = 10) -> float:
+    def eval_ranking_ndcg(self, ranking: np.ndarray, k=10) -> float:
         dcg = 0.0
         idcg = 0.0
         rel_set = []
         rel_set = sorted(ranking.copy().tolist(), reverse=True)
         for i in range(0, min(k, ranking.shape[0])):
-            r = ranking[i] # document (true) relevance label
+            r = ranking[i]  # document (true) relevance label
             dcg += ((2 ** r - 1) / np.log2(i + 2))
             idcg += ((2 ** rel_set[i] - 1) / np.log2(i + 2))
         # deal with invalid value
@@ -403,12 +434,12 @@ class RankingClient_iid_LRS_V2:
         return ndcg
 
     # evaluation metric: mrr@k
-    def eval_ranking_mrr(self, ranking: np.ndarray, k = 10) -> float:
+    def eval_ranking_mrr(self, ranking: np.ndarray, k=10) -> float:
         rr = 0.0
         got_rr = False
         for i in range(0, min(k, ranking.shape[0])):
-            r = ranking[i] # document (true) relevance label
-            if r > 0 and got_rr == False: # TODO: decide the threshold value for relevance label
+            r = ranking[i]  # document (true) relevance label
+            if r > 0 and got_rr == False:  # TODO: decide the threshold value for relevance label
                 rr = 1/(i+1)
                 got_rr = True
 
@@ -423,42 +454,51 @@ class RankingClient_iid_LRS_V2:
         """
         per_interaction_client_ndcg = []
         per_interaction_client_mrr = []
-        index = self.random_state.randint(len(self.query_set), size=n_interactions) # randomly choose queries for simulation on each client (number of queries based o the set n_interactions)
-        gradients = np.zeros(self.dataset._feature_size) # initialize gradient
-        for i in range(n_interactions): # run in batches
+        # randomly choose queries for simulation on each client (number of queries based o the set n_interactions)
+        index = self.random_state.randint(
+            len(self.query_set), size=n_interactions)
+        gradients = np.zeros(self.dataset._feature_size)  # initialize gradient
+        for i in range(n_interactions):  # run in batches
             id = index[i]
             qid = self.query_set[id]
 
-            ranking_result, scores = self.model.get_query_result_list(self.dataset, qid)
+            ranking_result, scores = self.model.get_query_result_list(
+                self.dataset, qid)
             # print("Type of result_list: ", type(ranking_result))   #Todo: should be np.ndarray, otherwise change function - [eval_ranking_mrr] and [eval_ranking_ndcg]
             ranking_relevance = np.zeros(ranking_result.shape[0])
             for i in range(0, ranking_result.shape[0]):
                 docid = ranking_result[i]
-                relevance = self.dataset.get_relevance_label_by_query_and_docid(qid, docid)
+                relevance = self.dataset.get_relevance_label_by_query_and_docid(
+                    qid, docid)
                 ranking_relevance[i] = relevance
             # # compute online performance
-            per_interaction_client_mrr.append(self.eval_ranking_mrr(ranking_relevance)) # using relevance label for evaluation
+            per_interaction_client_mrr.append(self.eval_ranking_mrr(
+                ranking_relevance))  # using relevance label for evaluation
             # per_interaction_client_ndcg.append(self.eval_ranking_ndcg(ranking_relevance))# using relevance label for evaluation
             # another way to compute online ndcg
-            online_ndcg = evl_tool.query_ndcg_at_k(self.dataset,ranking_result,qid,10)
+            online_ndcg = evl_tool.query_ndcg_at_k(
+                self.dataset, ranking_result, qid, 10)
             per_interaction_client_ndcg.append(online_ndcg)
 
-            click_id = self.random_state.randint(len(self.click_model), size=1)[0]
+            click_id = self.random_state.randint(
+                len(self.click_model), size=1)[0]
             click_model = self.click_model[click_id]
             click_label = click_model(ranking_relevance, self.random_state)
 
-            ## linear ranker
+            # linear ranker
             # g = self.model.update_to_clicks(click_label, ranking_result, scores, self.dataset.get_all_features_by_query(qid), return_gradients=True)
-            ## neural ranker
+            # neural ranker
             # g = self.model.update_to_clicks(click_label, ranking_result, scores, return_gradients=True)
             if isinstance(self.model, PDGDNeuralRanker):
-                g = self.model.update_to_clicks(click_label, ranking_result, scores, return_gradients=True)
+                g = self.model.update_to_clicks(
+                    click_label, ranking_result, scores, return_gradients=True)
             else:
-                g = self.model.update_to_clicks(click_label, ranking_result, scores, self.dataset.get_all_features_by_query(qid), return_gradients=True)
+                g = self.model.update_to_clicks(
+                    click_label, ranking_result, scores, self.dataset.get_all_features_by_query(qid), return_gradients=True)
 
             if multi_update:  # update in each interaction
                 self.model.update_to_gradients(g)
-            else: # accumulate gradients in batch (sum)
+            else:  # accumulate gradients in batch (sum)
                 gradients += g
 
         # testset_result = ranker.get_all_query_reuslt_list(test_set)
@@ -469,9 +509,10 @@ class RankingClient_iid_LRS_V2:
 
         updated_weights = self.model.get_current_weights()
 
-        ## add noise
+        # add noise
         if self.model.enable_noise:
-            noise = gamma_noise(np.shape(updated_weights), self.sensitivity, self.epsilon, self.n_clients)
+            noise = gamma_noise(np.shape(updated_weights),
+                                self.sensitivity, self.epsilon, self.n_clients)
 
             updated_weights += noise
 
@@ -479,7 +520,6 @@ class RankingClient_iid_LRS_V2:
         mean_client_mrr = np.mean(per_interaction_client_mrr)
 
         return ClientMessage(gradient=gradients, parameters=updated_weights, n_interactions=n_interactions), ClientMetric(mean_ndcg=mean_client_ndcg, mean_mrr=mean_client_mrr, ndcg_list=per_interaction_client_ndcg, mrr_list=per_interaction_client_mrr)
-
 
     def get_client_feedback(self, n_interactions: int) -> ClientMessage:
         """
@@ -491,11 +531,11 @@ class RankingClient_iid_LRS_V2:
         pass
 
 
-
 class RankingClient_iid_intent_change:
     """
     emulate clients for IID data of intent-change data: merging 4 intents as a whole, each time randomly pick one intent
     """
+
     def __init__(self, dataset: list, init_model, seed: int, click_model: CcmClickModel, sensitivity, epsilon, enable_noise, n_clients, client_id):
         """
         :param dateset: representing a (query -> {document relevances, document features}) mapping
@@ -545,13 +585,13 @@ class RankingClient_iid_intent_change:
         self.model.biases = local_biases
 
     # evaluation metric: ndcg@k
-    def eval_ranking_ndcg(self, ranking: np.ndarray, k = 10) -> float:
+    def eval_ranking_ndcg(self, ranking: np.ndarray, k=10) -> float:
         dcg = 0.0
         idcg = 0.0
         rel_set = []
         rel_set = sorted(ranking.copy().tolist(), reverse=True)
         for i in range(0, min(k, ranking.shape[0])):
-            r = ranking[i] # document (true) relevance label
+            r = ranking[i]  # document (true) relevance label
             dcg += ((2 ** r - 1) / np.log2(i + 2))
             idcg += ((2 ** rel_set[i] - 1) / np.log2(i + 2))
         # deal with invalid value
@@ -563,12 +603,12 @@ class RankingClient_iid_intent_change:
         return ndcg
 
     # evaluation metric: mrr@k
-    def eval_ranking_mrr(self, ranking: np.ndarray, k = 10) -> float:
+    def eval_ranking_mrr(self, ranking: np.ndarray, k=10) -> float:
         rr = 0.0
         got_rr = False
         for i in range(0, min(k, ranking.shape[0])):
-            r = ranking[i] # document (true) relevance label
-            if r > 0 and got_rr == False: # TODO: decide the threshold value for relevance label
+            r = ranking[i]  # document (true) relevance label
+            if r > 0 and got_rr == False:  # TODO: decide the threshold value for relevance label
                 rr = 1/(i+1)
                 got_rr = True
 
@@ -583,42 +623,52 @@ class RankingClient_iid_intent_change:
         """
         per_interaction_client_ndcg = []
         per_interaction_client_mrr = []
-        index = self.random_state.randint(self.query_set.shape[0], size=n_interactions) # randomly choose queries for simulation on each client (number of queries based o the set n_interactions)
-        index_intent = self.random_state.randint(len(self.dataset_list), size=n_interactions) # randomly choose intent for each query chosen
-        gradients = np.zeros(self.dataset._feature_size) # initialize gradient
-        global_weights = self.model.get_current_weights() # used for fedprox
+        # randomly choose queries for simulation on each client (number of queries based o the set n_interactions)
+        index = self.random_state.randint(
+            self.query_set.shape[0], size=n_interactions)
+        # randomly choose intent for each query chosen
+        index_intent = self.random_state.randint(
+            len(self.dataset_list), size=n_interactions)
+        gradients = np.zeros(self.dataset._feature_size)  # initialize gradient
+        global_weights = self.model.get_current_weights()  # used for fedprox
 
-        for i in range(n_interactions): # run in batches
+        for i in range(n_interactions):  # run in batches
             id = index[i]
             qid = self.query_set[id]
             # adding for randomly select data under different intent for IID distribution
             intent_type = index_intent[i]
             self.dataset = self.dataset_list[intent_type]
 
-            ranking_result, scores = self.model.get_query_result_list(self.dataset, qid)
+            ranking_result, scores = self.model.get_query_result_list(
+                self.dataset, qid)
             # print("Type of result_list: ", type(ranking_result))   #Todo: should be np.ndarray, otherwise change function - [eval_ranking_mrr] and [eval_ranking_ndcg]
             ranking_relevance = np.zeros(ranking_result.shape[0])
             for i in range(0, ranking_result.shape[0]):
                 docid = ranking_result[i]
-                relevance = self.dataset.get_relevance_label_by_query_and_docid(qid, docid)
+                relevance = self.dataset.get_relevance_label_by_query_and_docid(
+                    qid, docid)
                 ranking_relevance[i] = relevance
             # # compute online performance
-            per_interaction_client_mrr.append(self.eval_ranking_mrr(ranking_relevance)) # using relevance label for evaluation
+            per_interaction_client_mrr.append(self.eval_ranking_mrr(
+                ranking_relevance))  # using relevance label for evaluation
             # per_interaction_client_ndcg.append(self.eval_ranking_ndcg(ranking_relevance))# using relevance label for evaluation
             # another way to compute online ndcg
-            online_ndcg = evl_tool.query_ndcg_at_k(self.dataset,ranking_result,qid,10)
+            online_ndcg = evl_tool.query_ndcg_at_k(
+                self.dataset, ranking_result, qid, 10)
             per_interaction_client_ndcg.append(online_ndcg)
 
-            click_label = self.click_model(ranking_relevance, self.random_state)
+            click_label = self.click_model(
+                ranking_relevance, self.random_state)
 
             # g = self.model.update_to_clicks(click_label, ranking_result, scores, return_gradients=True)
             # g = self.model.update_to_clicks(click_label, ranking_result, scores,
             #                                 self.dataset.get_all_features_by_query(qid), return_gradients=True)
 
             current_weights = self.model.get_current_weights()  # used for fedprox
-            if fed_alg == "fedprox": # update for fedprox
+            if fed_alg == "fedprox":  # update for fedprox
                 if isinstance(self.model, PDGDNeuralRanker):
-                    g = self.model.update_to_clicks(click_label, ranking_result, scores, return_gradients=True)
+                    g = self.model.update_to_clicks(
+                        click_label, ranking_result, scores, return_gradients=True)
                     # regularization = mu * (current_weights - global_weights)
                     # g -= regularization
 
@@ -626,29 +676,36 @@ class RankingClient_iid_intent_change:
                     layer_num = len(g)
                     for idx in range(len(g)):
                         g_item_w = g[idx][0]
-                        regu_w_item = mu * (current_weights[0][layer_num-idx-1] - global_weights[0][layer_num-idx-1])
+                        regu_w_item = mu * \
+                            (current_weights[0][layer_num-idx-1] -
+                             global_weights[0][layer_num-idx-1])
                         g_item_w = g_item_w - regu_w_item
                         if idx != 0:
                             g_item_b = g[idx][1]
-                            regu_b_item = mu * ( current_weights[1][layer_num - idx - 1] - global_weights[1][layer_num - idx - 1])
+                            regu_b_item = mu * \
+                                (current_weights[1][layer_num - idx - 1] -
+                                 global_weights[1][layer_num - idx - 1])
                             g_item_b = g_item_b - regu_b_item
                         else:
                             g_item_b = None
                         new_g.append((g_item_w, g_item_b))
                     g = new_g
                 else:
-                    g = self.model.update_to_clicks(click_label, ranking_result, scores, self.dataset.get_all_features_by_query(qid), return_gradients=True)
+                    g = self.model.update_to_clicks(
+                        click_label, ranking_result, scores, self.dataset.get_all_features_by_query(qid), return_gradients=True)
                     regularization = mu * (current_weights - global_weights)
                     g -= regularization
             else:
                 if isinstance(self.model, PDGDNeuralRanker):
-                    g = self.model.update_to_clicks(click_label, ranking_result, scores, return_gradients=True)
+                    g = self.model.update_to_clicks(
+                        click_label, ranking_result, scores, return_gradients=True)
                 else:
-                    g = self.model.update_to_clicks(click_label, ranking_result, scores, self.dataset.get_all_features_by_query(qid), return_gradients=True)
+                    g = self.model.update_to_clicks(
+                        click_label, ranking_result, scores, self.dataset.get_all_features_by_query(qid), return_gradients=True)
 
             if multi_update:  # update in each interaction
                 self.model.update_to_gradients(g)
-            else: # accumulate gradients in batch (sum)
+            else:  # accumulate gradients in batch (sum)
                 gradients += g
 
         # testset_result = ranker.get_all_query_reuslt_list(test_set)
@@ -659,9 +716,10 @@ class RankingClient_iid_intent_change:
 
         updated_weights = self.model.get_current_weights()
 
-        ## add noise
+        # add noise
         if self.model.enable_noise:
-            noise = gamma_noise(np.shape(updated_weights), self.sensitivity, self.epsilon, self.n_clients)
+            noise = gamma_noise(np.shape(updated_weights),
+                                self.sensitivity, self.epsilon, self.n_clients)
 
             updated_weights += noise
 
@@ -669,7 +727,6 @@ class RankingClient_iid_intent_change:
         mean_client_mrr = np.mean(per_interaction_client_mrr)
 
         return ClientMessage(gradient=gradients, parameters=updated_weights, n_interactions=n_interactions), ClientMetric(mean_ndcg=mean_client_ndcg, mean_mrr=mean_client_mrr, ndcg_list=per_interaction_client_ndcg, mrr_list=per_interaction_client_mrr)
-
 
     def get_client_feedback(self, n_interactions: int) -> ClientMessage:
         """

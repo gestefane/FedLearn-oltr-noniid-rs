@@ -1,5 +1,13 @@
 from ranker.LinearRanker import LinearRanker
 import numpy as np
+import torch
+import torch.nn.functional as F
+
+from fast_soft_sort.tf_ops import soft_rank, soft_sort
+
+from ranker.risk import compute_rank_correlation, get_torch_device
+
+# from allrank.models.fast_soft_sort.pytorch_ops import soft_rank
 
 
 class PDGDLinearRanker(LinearRanker):
@@ -29,14 +37,15 @@ class PDGDLinearRanker(LinearRanker):
 
         k = np.minimum(10, n_docs)
 
-        doc_scores = self.get_scores(feature_matrix) # scores for all docs by linear ranker
+        # scores for all docs by linear ranker
+        doc_scores = self.get_scores(feature_matrix)
 
         doc_scores += 18 - np.amax(doc_scores)
 
         ranking = self._recursive_choice(np.copy(doc_scores),
                                          np.array([], dtype=np.int32),
                                          k,
-                                         random) # random = False. # Generate ranking list by ranking scores (from ranking function) and Plackett-Luce (PL) model distribution
+                                         random)  # random = False. # Generate ranking list by ranking scores (from ranking function) and Plackett-Luce (PL) model distribution
 
         return ranking, doc_scores
 
@@ -107,7 +116,6 @@ class PDGDLinearRanker(LinearRanker):
                 neg_ind = np.where(click_label[:last_exam + 1] == 0)[0]
                 pos_ind = np.where(click_label[:last_exam] == 1)[0]
 
-
         n_pos = pos_ind.shape[0]
         n_neg = neg_ind.shape[0]
         n_pairs = n_pos * n_neg
@@ -136,7 +144,8 @@ class PDGDLinearRanker(LinearRanker):
         pair_w /= pair_denom
         pair_w *= np.minimum(exp_pair_pos, exp_pair_neg)
 
-        pair_w *= self._calculate_unbias_weights(pos_ind, neg_ind, doc_scores, ranking)
+        pair_w *= self._calculate_unbias_weights(
+            pos_ind, neg_ind, doc_scores, ranking)
 
         reshaped = np.reshape(pair_w, (n_neg, n_pos))
         pos_w = np.sum(reshaped, axis=0)
@@ -157,17 +166,19 @@ class PDGDLinearRanker(LinearRanker):
 
     def update_to_gradients(self, gradients):
         self.weights += self.learning_rate * gradients
-        self.learning_rate *= self.learning_rate_decay # Todo: how to handle this in federated?
+        # Todo: how to handle this in federated?
+        self.learning_rate *= self.learning_rate_decay
 
-        ## clip weights
+        # clip weights
         if self.enable_noise:
-            scale = np.minimum(1, self.sensitivity / np.linalg.norm(self.weights, 2))
+            scale = np.minimum(1, self.sensitivity /
+                               np.linalg.norm(self.weights, 2))
             self.weights = self.weights * scale
-
 
     def federated_averaging_weights(self, feedbacks):
         assert len(feedbacks) > 0
-        feedbacks = [(m.gradient, m.parameters, m.n_interactions) for m in feedbacks]
+        feedbacks = [(m.gradient, m.parameters, m.n_interactions)
+                     for m in feedbacks]
         total_interactions = 0
         weights = None
         for feedback in feedbacks:
@@ -180,7 +191,6 @@ class PDGDLinearRanker(LinearRanker):
             total_interactions += client_interactions
         self.weights = weights / total_interactions
 
-
     def _update_to_documents(self, doc_ind, doc_weights, feature_matrix):
         weighted_docs = feature_matrix[doc_ind, :] * doc_weights[:, None]
         gradients = np.sum(weighted_docs, axis=0)
@@ -192,9 +202,10 @@ class PDGDLinearRanker(LinearRanker):
         self.weights += self.learning_rate * gradients
         self.learning_rate *= self.learning_rate_decay
 
-        ## clip weights
+        # clip weights
         if self.enable_noise:
-            scale = np.minimum(1, self.sensitivity / np.linalg.norm(self.weights, 2))
+            scale = np.minimum(1, self.sensitivity /
+                               np.linalg.norm(self.weights, 2))
             self.weights = self.weights * scale
 
     def _calculate_unbias_weights(self, pos_ind, neg_ind, doc_scores, ranking):
@@ -300,6 +311,9 @@ class PDGDLinearRanker(LinearRanker):
 
         safe_pair_prob = np.prod(safe_prob, axis=1)
 
+        # input("Pressione Enter para continuar...")
+        print(safe_pair_prob)
+        # input("Pressione Enter para continuar...")
         return safe_pair_prob
 
     def set_learning_rate(self, learning_rate):
@@ -307,3 +321,16 @@ class PDGDLinearRanker(LinearRanker):
 
     def set_tau(self, tau):
         self.tau = tau
+
+    def spearmanLoss(y_predicted, y1, y_true, u=0.0001):
+        device = y_predicted.device
+        # p_y_true = torch.squeeze(F.softmax(y_true, dim=1))
+        # p_y_predicted = torch.squeeze(F.softmax(y_predicted, dim=1))
+        p_y_true = torch.squeeze(y_true)
+        p_y_predicted = torch.squeeze(y_predicted)
+        m = []
+        for i in range(p_y_predicted.shape[0]):
+            m.append(compute_rank_correlation(
+                p_y_true[i], p_y_predicted[i], device, u=u))
+        m = torch.stack(m)
+        return -torch.mean(m)

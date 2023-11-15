@@ -4,6 +4,7 @@ datasets/
 .DS_Store
 */.DS_Store
 results/
+requirements.txt-old
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
