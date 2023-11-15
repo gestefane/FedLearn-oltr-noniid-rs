@@ -322,6 +322,12 @@ class PDGDLinearRanker(LinearRanker):
     def set_tau(self, tau):
         self.tau = tau
 
+    # try to use the spearmanLoss function in the training process
+    # this method receives a list of predicted list true scores
+    # compute_rank_correlation() method receives two lists of scores, predicted and true
+    # and returns the rank correlation between them
+    # this result is the loss function
+    # challenge: how (and where) to replace the loss function in the training process with this one?
     def spearmanLoss(y_predicted, y1, y_true, u=0.0001):
         device = y_predicted.device
         # p_y_true = torch.squeeze(F.softmax(y_true, dim=1))
